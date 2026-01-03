@@ -1,0 +1,607 @@
+<!-- cd /data0/jycheng/homework/MLLM_qwen3vl/dataset/大模型作业数据集
+ python3 -m http.server 8000
+ 浏览器打开http://localhost:8000/visualize_dataset.html
+ -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MVTec数据集预处理结果可视化</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .stats-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-card .label {
+            color: #666;
+            font-size: 1em;
+        }
+
+        .controls {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-top: 2px solid #e0e0e0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .controls label {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .controls select, .controls input {
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .controls select:focus, .controls input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .controls button {
+            padding: 10px 25px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .controls button:hover {
+            background: #5568d3;
+        }
+
+        .samples-container {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+            gap: 30px;
+        }
+
+        .sample-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .sample-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 25px rgba(0,0,0,0.15);
+        }
+
+        .sample-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            font-weight: 600;
+        }
+
+        .image-pair {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+        }
+
+        .image-wrapper {
+            position: relative;
+        }
+
+        .image-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            font-weight: 600;
+            z-index: 10;
+        }
+
+        .sample-card img {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+
+        .label-info {
+            padding: 20px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+
+        .status-normal {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-anomaly {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .changes-list {
+            margin-top: 10px;
+        }
+
+        .change-item {
+            background: #f8f9fa;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .change-item strong {
+            color: #667eea;
+        }
+
+        .bbox {
+            font-family: 'Courier New', monospace;
+            background: #e9ecef;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .description {
+            margin-top: 8px;
+            color: #495057;
+            font-style: italic;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 100px 20px;
+            color: #999;
+            font-size: 1.5em;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 1.2em;
+            color: #667eea;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            margin: 20px 30px;
+            border-radius: 8px;
+            border-left: 4px solid #f5c6cb;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            padding: 30px;
+        }
+
+        .pagination button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .pagination button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #5568d3;
+        }
+
+        .pagination span {
+            font-weight: 600;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 MVTec数据集预处理结果可视化</h1>
+            <p>可视化展示处理后的数据集样本（leather, bottle, cable, tile）</p>
+        </div>
+
+        <div class="stats-section" id="stats">
+            <div class="stat-card">
+                <div class="number" id="totalCount">0</div>
+                <div class="label">总样本数</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="normalCount">0</div>
+                <div class="label">正常样本</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="anomalyCount">0</div>
+                <div class="label">异常样本</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="categoryCount">0</div>
+                <div class="label">物体类别</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div style="width: 100%; margin-bottom: 15px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
+                <label for="fileInput" style="font-weight: 600; color: #1976d2; cursor: pointer;">
+                    📁 选择数据文件 (output_dataset.jsonl):
+                    <input type="file" id="fileInput" accept=".jsonl,.json" style="margin-left: 10px;" onchange="loadFromFile(event)">
+                </label>
+            </div>
+            
+            <label for="categoryFilter">物体类别:</label>
+            <select id="categoryFilter">
+                <option value="all">全部</option>
+                <option value="bottle">Bottle</option>
+                <option value="cable">Cable</option>
+                <option value="leather">Leather</option>
+                <option value="tile">Tile</option>
+            </select>
+
+            <label for="statusFilter">状态:</label>
+            <select id="statusFilter">
+                <option value="all">全部</option>
+                <option value="normal">无异常</option>
+                <option value="anomaly">异常</option>
+            </select>
+
+            <label for="searchBox">搜索异常类型:</label>
+            <input type="text" id="searchBox" placeholder="如: broken_large" />
+
+            <button onclick="applyFilters()">🔍 应用过滤</button>
+            <button onclick="resetFilters()">🔄 重置</button>
+        </div>
+
+        <div id="content">
+            <div class="loading">⏳ 正在加载数据...</div>
+        </div>
+
+        <div class="pagination" id="pagination" style="display:none;">
+            <button onclick="previousPage()">⬅️ 上一页</button>
+            <span id="pageInfo">第 1 页 / 共 1 页</span>
+            <button onclick="nextPage()">下一页 ➡️</button>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let filteredData = [];
+        let currentPage = 1;
+        const itemsPerPage = 6;
+
+        // 从文件选择器加载数据
+        function loadFromFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const text = e.target.result;
+                    if (!text.trim()) {
+                        throw new Error('数据文件为空');
+                    }
+
+                    const lines = text.trim().split('\n');
+                    allData = lines.map(line => JSON.parse(line));
+                    
+                    document.getElementById('content').innerHTML = `
+                        <div style="text-align: center; padding: 30px; background: #d4edda; color: #155724; border-radius: 8px; margin: 20px;">
+                            <strong>✅ 加载成功！</strong> 共加载 ${allData.length} 条数据
+                        </div>
+                    `;
+                    
+                    updateStats();
+                    applyFilters();
+                } catch (error) {
+                    document.getElementById('content').innerHTML = `
+                        <div class="error">
+                            <strong>❌ 解析失败:</strong> ${error.message}<br>
+                            请确保选择的是正确的 output_dataset.jsonl 文件
+                        </div>
+                    `;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // 尝试自动加载数据（可能因CORS失败）
+        async function loadData() {
+            try {
+                const response = await fetch('output_dataset.jsonl');
+                const text = await response.text();
+                
+                if (!text.trim()) {
+                    throw new Error('数据文件为空');
+                }
+
+                const lines = text.trim().split('\n');
+                allData = lines.map(line => JSON.parse(line));
+                
+                updateStats();
+                applyFilters();
+            } catch (error) {
+                document.getElementById('content').innerHTML = `
+                    <div class="error">
+                        <strong>❌ 自动加载失败:</strong> ${error.message}<br>
+                        <br>
+                        <strong>解决方法：</strong><br>
+                        👆 请点击上方的 <strong>"📁 选择数据文件"</strong> 按钮，<br>
+                        手动选择 <code>output_dataset.jsonl</code> 文件
+                        <br><br>
+                        <strong>文件位置：</strong><br>
+                        <code>/data0/jycheng/homework/MLLM_qwen3vl/dataset/大模型作业数据集/output_dataset.jsonl</code>
+                        <br><br>
+                        或在该目录运行 <code>python3 -m http.server 8000</code>，<br>
+                        然后访问 <code>http://localhost:8000/visualize_dataset.html</code>
+                    </div>
+                `;
+            }
+        }
+
+        // 更新统计信息
+        function updateStats() {
+            const normalCount = allData.filter(d => d.label.status === '无异常').length;
+            const anomalyCount = allData.filter(d => d.label.status === '异常').length;
+            const categories = new Set(allData.map(d => {
+                const match = d.image_b_path.match(/\/(bottle|cable|leather|tile)\//);
+                return match ? match[1] : null;
+            }));
+
+            document.getElementById('totalCount').textContent = allData.length;
+            document.getElementById('normalCount').textContent = normalCount;
+            document.getElementById('anomalyCount').textContent = anomalyCount;
+            document.getElementById('categoryCount').textContent = categories.size;
+        }
+
+        // 应用过滤
+        function applyFilters() {
+            const categoryFilter = document.getElementById('categoryFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            const searchText = document.getElementById('searchBox').value.toLowerCase();
+
+            filteredData = allData.filter(item => {
+                // 类别过滤
+                if (categoryFilter !== 'all') {
+                    if (!item.image_b_path.includes(`/${categoryFilter}/`)) {
+                        return false;
+                    }
+                }
+
+                // 状态过滤
+                if (statusFilter === 'normal' && item.label.status !== '无异常') return false;
+                if (statusFilter === 'anomaly' && item.label.status !== '异常') return false;
+
+                // 搜索过滤
+                if (searchText) {
+                    const hasMatch = item.label.changes.some(change => 
+                        change.description.toLowerCase().includes(searchText)
+                    );
+                    if (!hasMatch) return false;
+                }
+
+                return true;
+            });
+
+            currentPage = 1;
+            renderPage();
+        }
+
+        // 重置过滤
+        function resetFilters() {
+            document.getElementById('categoryFilter').value = 'all';
+            document.getElementById('statusFilter').value = 'all';
+            document.getElementById('searchBox').value = '';
+            applyFilters();
+        }
+
+        // 渲染当前页
+        function renderPage() {
+            const content = document.getElementById('content');
+            
+            if (filteredData.length === 0) {
+                content.innerHTML = '<div class="no-data">😢 没有找到匹配的数据</div>';
+                document.getElementById('pagination').style.display = 'none';
+                return;
+            }
+
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = Math.min(startIndex + itemsPerPage, filteredData.length);
+            const pageData = filteredData.slice(startIndex, endIndex);
+
+            const samplesHTML = pageData.map((item, index) => {
+                const globalIndex = startIndex + index;
+                return createSampleCard(item, globalIndex);
+            }).join('');
+
+            content.innerHTML = `<div class="samples-container">${samplesHTML}</div>`;
+
+            // 更新分页信息
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            document.getElementById('pageInfo').textContent = `第 ${currentPage} 页 / 共 ${totalPages} 页 (${filteredData.length} 条结果)`;
+            document.getElementById('pagination').style.display = 'flex';
+            
+            document.querySelector('.pagination button:first-child').disabled = currentPage === 1;
+            document.querySelector('.pagination button:last-child').disabled = currentPage === totalPages;
+        }
+
+        // 创建样本卡片
+        function createSampleCard(item, index) {
+            const statusClass = item.label.status === '无异常' ? 'status-normal' : 'status-anomaly';
+            
+            // 提取类别名称
+            const categoryMatch = item.image_b_path.match(/\/(bottle|cable|leather|tile)\//);
+            const category = categoryMatch ? categoryMatch[1] : 'unknown';
+            
+            let changesHTML = '';
+            if (item.label.changes && item.label.changes.length > 0) {
+                changesHTML = '<div class="changes-list">';
+                item.label.changes.forEach((change, idx) => {
+                    changesHTML += `
+                        <div class="change-item">
+                            <strong>异常 ${idx + 1}:</strong><br>
+                            <span class="bbox">BBox: [${change.bbox.join(', ')}]</span><br>
+                            <div class="description">📝 ${change.description}</div>
+                        </div>
+                    `;
+                });
+                changesHTML += '</div>';
+            } else {
+                changesHTML = '<p style="color: #6c757d; font-style: italic;">✅ 未检测到异常</p>';
+            }
+
+            // 构造图片路径（相对于HTML文件）
+            const imageAPath = item.image_a_path.replace(/\\/g, '/');
+            const imageBPath = item.image_b_path.replace(/\\/g, '/');
+
+            // 将绝对路径转为相对 HTML 目录的路径，便于在本地服务器下正确访问
+            const base = '/data0/jycheng/homework/MLLM_qwen3vl/dataset/大模型作业数据集/';
+            const imageAWebPath = imageAPath.startsWith(base) ? imageAPath.slice(base.length) : imageAPath;
+            const imageBWebPath = imageBPath.startsWith(base) ? imageBPath.slice(base.length) : imageBPath;
+
+            return `
+                <div class="sample-card">
+                    <div class="sample-header">
+                        样本 #${index + 1} - ${category.toUpperCase()}
+                    </div>
+                    <div class="image-pair">
+                        <div class="image-wrapper">
+                            <div class="image-label">参考图 (正常)</div>
+                            <img src="${imageAWebPath}" alt="参考图像" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'%23999\'%3E图片加载失败%3C/text%3E%3C/svg%3E'">
+                        </div>
+                        <div class="image-wrapper">
+                            <div class="image-label">待检测图</div>
+                            <img src="${imageBWebPath}" alt="待检测图像" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'%23999\'%3E图片加载失败%3C/text%3E%3C/svg%3E'">
+                        </div>
+                    </div>
+                    <div class="label-info">
+                        <span class="status-badge ${statusClass}">
+                            ${item.label.status === '无异常' ? '✅ 无异常' : '⚠️ 异常'}
+                        </span>
+                        ${changesHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        // 分页控制
+        function previousPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderPage();
+            }
+        }
+
+        function nextPage() {
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderPage();
+            }
+        }
+
+        // 页面加载时执行
+        window.onload = loadData;
+    </script>
+</body>
+</html>

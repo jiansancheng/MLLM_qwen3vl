@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>异常检测可视化 v5 (带统计大盘)</title>
+    <style>
+        :root { 
+            --gt-color: #22c55e; 
+            --gt-fill: rgba(34, 197, 94, 0.25);
+            --pred-color: #ef4444; 
+            --pred-fill: rgba(239, 68, 68, 0.25);
+            --bg: #f8f9fa; 
+            --card-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        body { margin: 0; padding: 20px; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: #1f2937; }
+        .container { max-width: 1800px; margin: 0 auto; }
+        
+        /* 顶部区域 */
+        .header { background: white; padding: 20px; border-radius: 12px; box-shadow: var(--card-shadow); margin-bottom: 25px; display: flex; flex-direction: column; gap: 20px; }
+        .top-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        
+        .title h1 { margin: 0; font-size: 26px; color: #111827; letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; }
+        .legend { display: flex; gap: 15px; font-size: 14px; font-weight: 600; margin-top: 5px; color: #4b5563; }
+        .dot { width: 12px; height: 12px; display: inline-block; border-radius: 3px; margin-right: 6px; }
+
+        /* --- 新增：统计仪表盘 --- */
+        .stats-dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding-top: 10px;
+            border-top: 1px solid #f3f4f6;
+        }
+        .stat-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .stat-card .label { font-size: 13px; color: #64748b; font-weight: 600; margin-bottom: 5px; }
+        .stat-card .value { font-size: 24px; font-weight: 700; color: #0f172a; }
+        .stat-card .sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+        .stat-highlight { color: #2563eb !important; }
+        .stat-success { color: #16a34a !important; }
+        .stat-danger { color: #dc2626 !important; }
+
+        /* 控制栏 */
+        .control-row { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; background: #f1f5f9; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; }
+        .input-group { display: flex; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .input-group input { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px 0 0 6px; width: 220px; outline: none; }
+        .input-group button { padding: 8px 16px; background: #4f46e5; color: white; border: none; border-radius: 0 6px 6px 0; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+        .input-group button:hover { background: #4338ca; }
+        
+        .path-fixer { display: flex; align-items: center; gap: 10px; flex: 1; }
+        .path-fixer input { flex: 1; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace; font-size: 13px; }
+
+        /* 网格布局 */
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(850px, 1fr)); 
+            gap: 30px; 
+        }
+        .card { background: white; border-radius: 16px; overflow: hidden; box-shadow: var(--card-shadow); border: 1px solid #e5e7eb; display: flex; flex-direction: column; }
+        
+        .card-header { padding: 12px 20px; background: #fff; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+        .header-id { font-size: 16px; font-weight: 700; color: #374151; }
+        
+        .metrics-pill { display: flex; gap: 10px; }
+        .metric-tag { padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; border: 1px solid transparent; }
+        .tag-iou { background: #f0f9ff; color: #0284c7; border-color: #bae6fd; }
+        .tag-ok { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        .tag-err { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+
+        .images-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: #e2e8f0; }
+        .img-wrapper { position: relative; background: #0f172a; min-height: 400px; max-height: 700px; display: flex; align-items: center; justify-content: center; }
+        .img-wrapper img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .img-label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 10; }
+        canvas.overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+        .info-section { padding: 20px; font-size: 14px; background: #fff; border-top: 1px solid #f1f5f9; }
+        .json-box { background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; font-family: 'Consolas', monospace; max-height: 120px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; color: #334155; margin-top: 5px; }
+        .thinking-box { color: #64748b; font-style: italic; border-left: 3px solid #cbd5e1; padding: 10px; margin-top: 10px; background: #f9fafb; display: none; white-space: pre-wrap; }
+
+        .pagination { margin-top: 40px; display: flex; justify-content: center; gap: 15px; padding-bottom: 60px; }
+        .pagination button { padding: 10px 20px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; cursor: pointer; font-size: 15px; }
+        .pagination button:hover { background: #f1f5f9; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="top-row">
+            <div class="title">
+                <h1>📊 异常检测评估GRPO Visualizer </h1>
+                <div class="legend">
+                    <span><span class="dot" style="background: var(--gt-color);"></span>GT 真值</span>
+                    <span><span class="dot" style="background: var(--pred-color);"></span>Pred 预测</span>
+                </div>
+            </div>
+            
+            <div class="input-group">
+                <input type="text" id="urlInput" value="test_results_grpo.json" placeholder="结果文件名 (.json)">
+                <button onclick="loadFromUrl()">重新加载数据</button>
+            </div>
+        </div>
+
+        <div class="stats-dashboard" id="statsDashboard">
+            <div class="stat-card">
+                <span class="label">总样本数</span>
+                <span class="value" id="st-total">-</span>
+                <span class="sub">Total Samples</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">整体准确率 (Status)</span>
+                <span class="value stat-highlight" id="st-acc">-</span>
+                <span class="sub">Accuracy</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">正常样本判断</span>
+                <span class="value stat-success" id="st-normal">-</span>
+                <span class="sub" id="st-normal-sub">0/0 Correct</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">异常样本判断</span>
+                <span class="value stat-danger" id="st-anomaly">-</span>
+                <span class="sub" id="st-anomaly-sub">0/0 Correct</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">定位 Recall (IoU>0.5)</span>
+                <span class="value stat-highlight" id="st-iou">-</span>
+                <span class="sub">Among GT Anomalies</span>
+            </div>
+        </div>
+
+        <div class="control-row">
+            <div class="path-fixer">
+                <label>🛠️ 图片路径前缀:</label>
+                <input type="text" id="pathPrefix" value="dataset/大模型作业数据集/MVTEC-AD/" oninput="renderPage()" placeholder="例如: dataset/images/">
+            </div>
+            <select id="statusFilter" onchange="applyFilters()" style="padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;">
+                <option value="all">显示全部</option>
+                <option value="correct">✅ 只看正确</option>
+                <option value="wrong">❌ 只看错误</option>
+                <option value="anomaly_only">⚠️ 只看含异常样本</option>
+                <option value="high_iou">🎯 高 IoU (>0.5)</option>
+            </select>
+            <span id="listStatsText" style="color: #64748b; font-size: 14px; margin-left: 10px;"></span>
+        </div>
+    </div>
+
+    <div id="grid" class="grid">
+        <div style="text-align: center; grid-column: 1/-1; padding: 60px; color: #9ca3af; font-size: 18px;">
+            数据加载中...
+        </div>
+    </div>
+
+    <div class="pagination" id="pagination" style="display:none">
+        <button onclick="changePage(-1)">⬅️ 上一页</button>
+        <span id="pageInfo" style="line-height: 40px; font-weight:600; color:#475569;">1 / 1</span>
+        <button onclick="changePage(1)">下一页 ➡️</button>
+    </div>
+</div>
+
+<script>
+    let rawData = [];
+    let filteredData = [];
+    let summaryData = null; // 存储后端计算的统计信息
+    let currentPage = 1;
+    const pageSize = 5;
+
+    async function loadFromUrl() {
+        const filename = document.getElementById('urlInput').value.trim();
+        const btn = document.querySelector('.input-group button');
+        
+        if (!filename) { alert("请输入文件名"); return; }
+        btn.innerText = "读取中..."; btn.disabled = true;
+
+        try {
+            const response = await fetch(filename + "?t=" + new Date().getTime());
+            if (!response.ok) throw new Error(`文件未找到 (404)`);
+
+            const text = await response.text();
+            
+            // --- 智能解析逻辑 ---
+            try {
+                // 尝试解析为标准 JSON (新格式)
+                const json = JSON.parse(text);
+                if (json.summary && json.data) {
+                    summaryData = json.summary;
+                    rawData = json.data;
+                } else if (Array.isArray(json)) {
+                    // 旧格式：直接是数组
+                    rawData = json;
+                    summaryData = null;
+                } else {
+                    // 可能是单个对象但格式不对
+                    rawData = [];
+                }
+            } catch (e) {
+                // 尝试解析为 JSONL (旧格式兼容)
+                rawData = text.trim().split('\n').map(line => {
+                    try { return JSON.parse(line); } catch { return null; }
+                }).filter(x => x);
+                summaryData = null;
+            }
+
+            if (rawData.length === 0) alert("数据为空或格式错误");
+            
+            // 渲染统计面板
+            renderDashboard(summaryData, rawData);
+            
+            applyFilters();
+        } catch (err) {
+            alert("❌ 加载失败: " + err.message);
+            console.error(err);
+        } finally {
+            btn.innerText = "重新加载数据"; btn.disabled = false;
+        }
+    }
+
+    // 将统计数据渲染到顶部 Dashboard
+    function renderDashboard(summary, data) {
+        // 如果后端没传 summary，我们自己简单算一下
+        let s = summary;
+        if (!s) {
+            const total = data.length;
+            const correct = data.filter(d => d.metrics.status_correct).length;
+            const anomalyGt = data.filter(d => d.gt.status === '异常').length;
+            const normalGt = total - anomalyGt;
+            // 简单模拟
+            s = {
+                total_samples: total,
+                accuracy_all: correct / total,
+                normal_count: normalGt,
+                normal_acc: 0, // 暂无法精确拆分，显示 '-'
+                anomaly_count: anomalyGt,
+                anomaly_acc: 0,
+                bbox_recall_iou05: 0
+            };
+        }
+
+        // 辅助函数：百分比
+        const pct = (val) => (val * 100).toFixed(1) + '%';
+
+        document.getElementById('st-total').innerText = s.total_samples;
+        document.getElementById('st-acc').innerText = pct(s.accuracy_all);
+        
+        document.getElementById('st-normal').innerText = s.normal_acc ? pct(s.normal_acc) : '-';
+        document.getElementById('st-normal-sub').innerText = `Total Normal: ${s.normal_count}`;
+        
+        document.getElementById('st-anomaly').innerText = s.anomaly_acc ? pct(s.anomaly_acc) : '-';
+        document.getElementById('st-anomaly-sub').innerText = `Total Anomaly: ${s.anomaly_count}`;
+        
+        document.getElementById('st-iou').innerText = s.bbox_recall_iou05 ? pct(s.bbox_recall_iou05) : '-';
+    }
+
+    function applyFilters() {
+        const statusMode = document.getElementById('statusFilter').value;
+        filteredData = rawData.filter(item => {
+            if (statusMode === 'correct') return item.metrics.status_correct;
+            if (statusMode === 'wrong') return !item.metrics.status_correct;
+            if (statusMode === 'anomaly_only') return item.gt.status === '异常' || item.pred.status === '异常';
+            if (statusMode === 'high_iou') return item.metrics.max_iou > 0.5;
+            return true;
+        });
+        document.getElementById('listStatsText').innerText = `当前列表: ${filteredData.length} 条`;
+        currentPage = 1;
+        renderPage();
+    }
+
+    function getFixedPath(originalPath) {
+        if (!originalPath) return "";
+        // 简单的提取文件名逻辑，适配不同路径结构
+        const parts = originalPath.split('/');
+        const filename = parts.pop();
+        const category = parts.pop(); // 假设上一级是类别名
+        
+        // 尝试匹配特定的类别文件夹
+        const match = originalPath.match(/\/(bottle|cable|leather|tile|capsule|carpet|grid|hazelnut|metal_nut|pill|screw|toothbrush|transistor|wood|zipper)\//);
+        let cleanName = originalPath;
+        if (match) {
+            cleanName = originalPath.substring(match.index + 1);
+        } else {
+             // 如果没匹配到，就尽量用最后两级
+             cleanName = category + '/' + filename;
+        }
+
+        const prefix = document.getElementById('pathPrefix').value.trim();
+        const finalPrefix = prefix && !prefix.endsWith('/') ? prefix + '/' : prefix;
+        return finalPrefix + cleanName;
+    }
+
+    function renderPage() {
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        const start = (currentPage - 1) * pageSize;
+        const pageItems = filteredData.slice(start, start + pageSize);
+
+        if (pageItems.length === 0) {
+            grid.innerHTML = '<div style="text-align:center; grid-column:1/-1; padding:40px; color:#64748b">暂无符合条件的样本</div>';
+            updatePagination();
+            return;
+        }
+
+        pageItems.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            
+            const imgA = getFixedPath(item.image_a);
+            const imgB = getFixedPath(item.image_b);
+
+            const isCorrect = item.metrics.status_correct;
+            const iouVal = (item.metrics.max_iou * 100).toFixed(1);
+            
+            card.innerHTML = `
+                <div class="card-header">
+                    <span class="header-id">Sample ID: ${item.id}</span>
+                    <div class="metrics-pill">
+                        <span class="metric-tag tag-iou">IoU: ${iouVal}%</span>
+                        <span class="metric-tag ${isCorrect ? 'tag-ok' : 'tag-err'}">
+                            ${isCorrect ? 'Status Correct' : 'Status Wrong'}
+                        </span>
+                    </div>
+                </div>
+                <div class="images-row">
+                    <div class="img-wrapper">
+                        <div class="img-label">Reference</div>
+                        <img src="${imgA}" loading="lazy" onerror="this.style.display='none';">
+                    </div>
+                    <div class="img-wrapper" id="wrapper-${item.id}">
+                        <div class="img-label">Target (Green=GT, Red=Pred)</div>
+                        <img src="${imgB}" id="img-${item.id}" loading="lazy" onerror="this.alt='图片加载失败'">
+                        <canvas id="canvas-${item.id}" class="overlay"></canvas>
+                    </div>
+                </div>
+                <div class="info-section">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                        <div>
+                            <strong style="color:var(--gt-color)">GT: ${item.gt.status}</strong>
+                            <div class="json-box" style="border-left: 3px solid var(--gt-color)">${formatChanges(item.gt.changes)}</div>
+                        </div>
+                        <div>
+                            <strong style="color:var(--pred-color)">Pred: ${item.pred.status}</strong>
+                            <div class="json-box" style="border-left: 3px solid var(--pred-color)">${formatChanges(item.pred.changes)}</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <span style="color:#4f46e5; cursor:pointer; font-weight:600; font-size:13px;" onclick="toggleThinking(this)">▶ 显示 CoT 思维链</span>
+                        <div class="thinking-box">${item.thinking || 'No thinking data'}</div>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(card);
+            
+            // 绘图逻辑
+            const imgEl = card.querySelector(`#img-${item.id}`);
+            if (imgEl) {
+                imgEl.onload = () => drawBoxes(item, imgEl, card.querySelector(`#canvas-${item.id}`));
+                if (imgEl.complete && imgEl.naturalWidth > 0) drawBoxes(item, imgEl, card.querySelector(`#canvas-${item.id}`));
+            }
+        });
+
+        updatePagination();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleThinking(el) {
+        const box = el.nextElementSibling;
+        if (box.style.display === 'block') {
+            box.style.display = 'none';
+            el.innerText = '▶ 显示 CoT 思维链';
+        } else {
+            box.style.display = 'block';
+            el.innerText = '▼ 隐藏 CoT 思维链';
+        }
+    }
+
+    function drawBoxes(item, img, canvas) {
+        if (!img || !canvas || img.naturalWidth === 0) return;
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.font = "bold 24px Arial";
+
+        const draw = (changes, strokeColor, fillColor, prefix) => {
+            if (!changes || !Array.isArray(changes)) return;
+            changes.forEach((ch, i) => {
+                if (!ch.bbox) return;
+                const [x1, y1, x2, y2] = ch.bbox;
+                const w = x2 - x1, h = y2 - y1;
+                
+                // 填充
+                ctx.fillStyle = fillColor;
+                ctx.fillRect(x1, y1, w, h);
+                // 边框
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = strokeColor;
+                ctx.strokeRect(x1, y1, w, h);
+                // 标签
+                const txt = `${prefix}${i+1}`;
+                const tm = ctx.measureText(txt);
+                ctx.fillStyle = strokeColor;
+                const ly = y1 > 30 ? y1 - 30 : y1;
+                ctx.fillRect(x1, ly, tm.width + 10, 30);
+                ctx.fillStyle = "white";
+                ctx.fillText(txt, x1 + 5, ly + 24);
+            });
+        };
+
+        draw(item.gt.changes, '#22c55e', 'rgba(34, 197, 94, 0.25)', 'GT');
+        draw(item.pred.changes, '#ef4444', 'rgba(239, 68, 68, 0.25)', 'P');
+    }
+
+    function formatChanges(changes) {
+        if (!changes || changes.length === 0) return "[]";
+        return changes.map((c, i) => `#${i+1} [${c.bbox ? c.bbox.map(x=>Math.round(x)).join(',') : ''}] ${c.description}`).join('\n');
+    }
+
+    function changePage(delta) {
+        const maxPage = Math.ceil(filteredData.length / pageSize);
+        const newPage = currentPage + delta;
+        if (newPage >= 1 && newPage <= maxPage) {
+            currentPage = newPage;
+            renderPage();
+        }
+    }
+
+    function updatePagination() {
+        const maxPage = Math.ceil(filteredData.length / pageSize) || 1;
+        document.getElementById('pagination').style.display = filteredData.length > 0 ? 'flex' : 'none';
+        document.getElementById('pageInfo').innerText = `${currentPage} / ${maxPage}`;
+        const btns = document.querySelectorAll('.pagination button');
+        btns[0].disabled = currentPage === 1;
+        btns[1].disabled = currentPage === maxPage;
+    }
+
+    // 初始化
+    window.onload = loadFromUrl;
+</script>
+
+</body>
+</html>
