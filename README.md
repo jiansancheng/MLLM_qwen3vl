@@ -21,10 +21,11 @@
 ## 训练与推理
 -
 - 训练/微调与强化（按需）：
+  
+  python mvtec_process.py   # 预处理数据，分割训练集dataset/大模型作业数据集/train.jsonl
   ```bash
-  bash mvtec_process.sh   # 预处理数据，分割训练集dataset/大模型作业数据集/train.jsonl
   bash mvtec_rollout.sh   # 采样/推理
-  bash mvtec_grpo.sh      # GRPO 训练
+  bash mvtec_grpo.sh      # GRPO 训练，调用mvtec_reward.py的奖励函数设计
   ```
 - 测试集推理：
   ```bash
